@@ -51,7 +51,35 @@ public class UsersController : ControllerBase
         });
     }
 
-    // 4. DELETE user: api/users/{id}
+    // 4. UPDATE user: api/users/{id}
+    [HttpPut("{id}")]
+    public async Task<IActionResult> UpdateUser(int id, User user)
+    {
+        if (id != user.UserId)
+        {
+            return BadRequest(new { message = "User ID does not match" });
+        }
+
+        var existingUser = await _context.Users.FindAsync(id);
+
+        if (existingUser == null)
+        {
+            return NotFound(new { message = "User not found" });
+        }
+
+        existingUser.FullName = user.FullName;
+        existingUser.Email = user.Email;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            message = "User updated successfully",
+            data = existingUser
+        });
+    }
+
+    // 5. DELETE user: api/users/{id}
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteUser(int id)
     {
