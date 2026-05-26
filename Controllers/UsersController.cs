@@ -1,6 +1,8 @@
 using Food_order_Backend.Data;
 using Food_order_Backend.Models;
 using Food_order_Backend.DTOs;
+using Food_order_Backend.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,13 +13,16 @@ namespace Food_order_Backend.Controllers;
 public class UsersController : ControllerBase
 {
     private readonly AppDBContext _context;
+    private readonly JwtService _jwtService;
 
-    public UsersController(AppDBContext context)
+    public UsersController(AppDBContext context, JwtService jwtService)
     {
         _context = context;
+        _jwtService = jwtService;
     }
 
-    // POST api/users/login
+    // ไม่ต้อง Login — เปิด Public
+    [AllowAnonymous]
     [HttpPost("login")]
     public async Task<IActionResult> Login(UserLoginDto dto)
     {
@@ -27,20 +32,18 @@ public class UsersController : ControllerBase
         if (user == null)
             return Unauthorized(new { message = "Invalid email or password" });
 
+        var token = _jwtService.GenerateToken(user);
+
         return Ok(new
         {
             message = "Login successful",
-            data = new
-            {
-                user.UserId,
-                user.FullName,
-                user.Email,
-                user.Role
-            }
+            token,
+            data = new { user.UserId, user.FullName, user.Email, user.Role }
         });
     }
 
-    // POST api/users/register
+    // ไม่ต้อง Login — เปิด Public
+    [AllowAnonymous]
     [HttpPost("register")]
     public async Task<IActionResult> Register(UserRegisterDto dto)
     {
@@ -52,23 +55,27 @@ public class UsersController : ControllerBase
         {
             FullName = dto.FullName,
             Email = dto.Email,
-            Password = dto.Password, // NOTE: hash ใน production จริง
+            Password = dto.Password,
             Role = "Customer"
         };
 
         _context.Users.Add(user);
         await _context.SaveChangesAsync();
 
+        var token = _jwtService.GenerateToken(user);
+
         return Ok(new
         {
             message = "Registered successfully",
+            token,
             data = new { user.UserId, user.FullName, user.Email, user.Role }
         });
     }
 
-    // GET api/users
+    // Admin เท่านั้น
+    [Authorize(Roles = "Admin")]
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<object>>> GetUsers()
+    public async Task<IActionResult> GetUsers()
     {
         var users = await _context.Users
             .Select(u => new { u.UserId, u.FullName, u.Email, u.Role })
@@ -76,7 +83,8 @@ public class UsersController : ControllerBase
         return Ok(users);
     }
 
-    // GET api/users/{id}
+    // Admin เท่านั้น
+    [Authorize(Roles = "Admin")]
     [HttpGet("{id}")]
     public async Task<IActionResult> GetUser(int id)
     {
@@ -87,7 +95,8 @@ public class UsersController : ControllerBase
         return Ok(new { user.UserId, user.FullName, user.Email, user.Role });
     }
 
-    // PUT api/users/{id}
+    // Admin เท่านั้น
+    [Authorize(Roles = "Admin")]
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateUser(int id, UserRegisterDto dto)
     {
@@ -113,7 +122,8 @@ public class UsersController : ControllerBase
         });
     }
 
-    // DELETE api/users/{id}
+    // Admin เท่านั้น
+    [Authorize(Roles = "Admin")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteUser(int id)
     {

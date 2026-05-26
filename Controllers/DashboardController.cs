@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Food_order_Backend.Data;
@@ -7,6 +8,7 @@ namespace Food_order_Backend.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize(Roles = "Admin")] // Dashboard — Admin เท่านั้น
 public class DashboardController : ControllerBase
 {
     private readonly AppDBContext _context;
@@ -16,7 +18,6 @@ public class DashboardController : ControllerBase
         _context = context;
     }
 
-    // GET api/dashboard/summary
     [HttpGet("summary")]
     public async Task<IActionResult> GetSummary()
     {
@@ -28,7 +29,6 @@ public class DashboardController : ControllerBase
             .Where(o => o.Status == "Completed")
             .SumAsync(o => (decimal?)o.TotalPrice) ?? 0;
 
-        // ออเดอร์ล่าสุด 10 รายการ
         var recentOrders = await _context.Orders
             .Include(o => o.Customer)
             .OrderByDescending(o => o.CreatedAt)
@@ -46,7 +46,6 @@ public class DashboardController : ControllerBase
             })
             .ToListAsync();
 
-        // Top 5 สินค้าขายดี
         var topProducts = await _context.OrderItems
             .Include(oi => oi.Product)
             .GroupBy(oi => new { oi.ProductId, oi.Product!.ProductName })

@@ -1,6 +1,7 @@
 using Food_order_Backend.Data;
 using Food_order_Backend.Models;
 using Food_order_Backend.DTOs;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -17,7 +18,8 @@ public class ProductsController : ControllerBase
         _context = context;
     }
 
-    // GET api/products  — ดูเมนูทั้งหมด (พร้อมชื่อ Category)
+    // ทุกคนดูเมนูได้ — Public
+    [AllowAnonymous]
     [HttpGet]
     public async Task<ActionResult<IEnumerable<ProductResponseDto>>> GetProducts()
     {
@@ -38,11 +40,13 @@ public class ProductsController : ControllerBase
         return Ok(products);
     }
 
-    // GET api/products/{id}
+    // ทุกคนดูเมนูได้ — Public
+    [AllowAnonymous]
     [HttpGet("{id}")]
     public async Task<ActionResult<ProductResponseDto>> GetProduct(int id)
     {
-        var p = await _context.Products.Include(p => p.Category).FirstOrDefaultAsync(p => p.ProductId == id);
+        var p = await _context.Products.Include(p => p.Category)
+            .FirstOrDefaultAsync(p => p.ProductId == id);
 
         if (p == null)
             return NotFound(new { message = "Product not found" });
@@ -59,7 +63,8 @@ public class ProductsController : ControllerBase
         });
     }
 
-    // POST api/products  — Admin: เพิ่มเมนู
+    // Admin เท่านั้น — เพิ่มเมนู
+    [Authorize(Roles = "Admin")]
     [HttpPost]
     public async Task<ActionResult<Product>> CreateProduct(ProductCreateDto dto)
     {
@@ -82,7 +87,8 @@ public class ProductsController : ControllerBase
         return Ok(new { message = "Product added successfully", data = product });
     }
 
-    // PUT api/products/{id}  — Admin: แก้ไขเมนู
+    // Admin เท่านั้น — แก้ไขเมนู
+    [Authorize(Roles = "Admin")]
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateProduct(int id, ProductCreateDto dto)
     {
@@ -105,7 +111,8 @@ public class ProductsController : ControllerBase
         return Ok(new { message = "Product updated successfully", data = existingProduct });
     }
 
-    // DELETE api/products/{id}  — Admin: ลบเมนู
+    // Admin เท่านั้น — ลบเมนู
+    [Authorize(Roles = "Admin")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteProduct(int id)
     {

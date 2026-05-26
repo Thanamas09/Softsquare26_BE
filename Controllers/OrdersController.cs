@@ -1,13 +1,16 @@
 using Food_order_Backend.Data;
 using Food_order_Backend.Models;
 using Food_order_Backend.DTOs;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace Food_order_Backend.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize] // ทุก endpoint ต้อง Login ก่อน
 public class OrdersController : ControllerBase
 {
     private readonly AppDBContext _context;
@@ -17,7 +20,8 @@ public class OrdersController : ControllerBase
         _context = context;
     }
 
-    // GET api/orders  — Admin: ดูออเดอร์ทั้งหมด
+    // Admin เท่านั้น — ดูออเดอร์ทั้งหมด
+    [Authorize(Roles = "Admin")]
     [HttpGet]
     public async Task<ActionResult<IEnumerable<OrderResponseDto>>> GetOrders()
     {
@@ -31,7 +35,8 @@ public class OrdersController : ControllerBase
         return Ok(orders);
     }
 
-    // GET api/orders/{id}  — ดูออเดอร์เดี่ยว
+    // Admin เท่านั้น — ดูออเดอร์เดี่ยว
+    [Authorize(Roles = "Admin")]
     [HttpGet("{id}")]
     public async Task<ActionResult<OrderResponseDto>> GetOrder(int id)
     {
@@ -46,10 +51,18 @@ public class OrdersController : ControllerBase
         return Ok(MapToDto(order));
     }
 
-    // GET api/orders/customer/{customerId}  — Customer: ดูออเดอร์ของตัวเอง
+    // Customer — ดูออเดอร์ของตัวเอง (ดูได้เฉพาะ customerId ตัวเอง)
+    [Authorize(Roles = "Customer,Admin")]
     [HttpGet("customer/{customerId}")]
     public async Task<ActionResult<IEnumerable<OrderResponseDto>>> GetOrdersByCustomer(int customerId)
     {
+        // Customer ดูได้แค่ของตัวเอง, Admin ดูได้ทุกคน
+        var currentUserId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var currentRole = User.FindFirstValue(ClaimTypes.Role);
+
+        if (currentRole == "Customer" && currentUserId != customerId)
+            return Forbid();
+
         var customerExists = await _context.Users.AnyAsync(u => u.UserId == customerId);
         if (!customerExists)
             return NotFound(new { message = "Customer not found" });
@@ -65,10 +78,18 @@ public class OrdersController : ControllerBase
         return Ok(orders);
     }
 
-    // POST api/orders  — Customer: สั่งอาหาร (คำนวณราคาจาก DB)
+    // Customer — สั่งอาหาร
+    [Authorize(Roles = "Customer,Admin")]
     [HttpPost]
     public async Task<ActionResult<OrderResponseDto>> CreateOrder(OrderCreateDto dto)
     {
+        // Customer สั่งได้เฉพาะในนามตัวเอง
+        var currentUserId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var currentRole = User.FindFirstValue(ClaimTypes.Role);
+
+        if (currentRole == "Customer" && currentUserId != dto.CustomerId)
+            return Forbid();
+
         var customerExists = await _context.Users.AnyAsync(u => u.UserId == dto.CustomerId);
         if (!customerExists)
             return BadRequest(new { message = "Customer not found" });
@@ -76,7 +97,6 @@ public class OrdersController : ControllerBase
         if (!dto.Items.Any())
             return BadRequest(new { message = "Order must have at least 1 item" });
 
-        // คำนวณ TotalPrice จาก Product จริงใน DB
         decimal totalPrice = 0;
         var orderItems = new List<OrderItem>();
 
@@ -88,14 +108,12 @@ public class OrdersController : ControllerBase
             if (!product.IsAvailable)
                 return BadRequest(new { message = $"Product '{product.ProductName}' is not available" });
 
-            var unitPrice = product.Price;
-            totalPrice += unitPrice * item.Quantity;
-
+            totalPrice += product.Price * item.Quantity;
             orderItems.Add(new OrderItem
             {
                 ProductId = item.ProductId,
                 Quantity = item.Quantity,
-                UnitPrice = unitPrice
+                UnitPrice = product.Price
             });
         }
 
@@ -114,7 +132,6 @@ public class OrdersController : ControllerBase
         _context.Orders.Add(order);
         await _context.SaveChangesAsync();
 
-        // Reload with navigation
         var created = await _context.Orders
             .Include(o => o.Customer)
             .Include(o => o.OrderItems).ThenInclude(oi => oi.Product)
@@ -123,13 +140,21 @@ public class OrdersController : ControllerBase
         return Ok(new { message = "Order created successfully", data = MapToDto(created) });
     }
 
-    // PATCH api/orders/{id}/cancel  — Customer: ยกเลิกออเดอร์
+    // Customer — ยกเลิกออเดอร์ตัวเอง
+    [Authorize(Roles = "Customer,Admin")]
     [HttpPatch("{id}/cancel")]
     public async Task<IActionResult> CancelOrder(int id)
     {
         var order = await _context.Orders.FindAsync(id);
         if (order == null)
             return NotFound(new { message = "Order not found" });
+
+        // Customer ยกเลิกได้เฉพาะออเดอร์ตัวเอง
+        var currentUserId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var currentRole = User.FindFirstValue(ClaimTypes.Role);
+
+        if (currentRole == "Customer" && order.CustomerId != currentUserId)
+            return Forbid();
 
         if (order.Status == "Completed")
             return BadRequest(new { message = "Cannot cancel a completed order" });
@@ -143,13 +168,14 @@ public class OrdersController : ControllerBase
         return Ok(new { message = "Order cancelled successfully", orderId = id, status = order.Status });
     }
 
-    // PATCH api/orders/{id}/status  — Admin: เปลี่ยน Status
+    // Admin เท่านั้น — เปลี่ยน Status
+    [Authorize(Roles = "Admin")]
     [HttpPatch("{id}/status")]
     public async Task<IActionResult> UpdateStatus(int id, [FromBody] UpdateStatusDto dto)
     {
         var validStatuses = new[] { "Pending", "Completed", "Cancelled" };
         if (!validStatuses.Contains(dto.Status))
-            return BadRequest(new { message = $"Invalid status. Valid values: {string.Join(", ", validStatuses)}" });
+            return BadRequest(new { message = $"Invalid status. Valid: {string.Join(", ", validStatuses)}" });
 
         var order = await _context.Orders.FindAsync(id);
         if (order == null)
@@ -158,10 +184,11 @@ public class OrdersController : ControllerBase
         order.Status = dto.Status;
         await _context.SaveChangesAsync();
 
-        return Ok(new { message = "Status updated successfully", orderId = id, status = order.Status });
+        return Ok(new { message = "Status updated", orderId = id, status = order.Status });
     }
 
-    // PUT api/orders/{id}  — Admin: แก้ไขออเดอร์
+    // Admin เท่านั้น — แก้ไขออเดอร์
+    [Authorize(Roles = "Admin")]
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateOrder(int id, OrderCreateDto dto)
     {
@@ -175,7 +202,6 @@ public class OrdersController : ControllerBase
         if (existingOrder.Status != "Pending")
             return BadRequest(new { message = "Only Pending orders can be edited" });
 
-        // คำนวณราคาใหม่
         decimal totalPrice = 0;
         var newItems = new List<OrderItem>();
 
@@ -195,20 +221,22 @@ public class OrdersController : ControllerBase
         existingOrder.CustomerId = dto.CustomerId;
         existingOrder.TotalPrice = totalPrice;
 
-        // แทนที่ items เดิม
         _context.OrderItems.RemoveRange(existingOrder.OrderItems);
         existingOrder.OrderItems = newItems;
 
         await _context.SaveChangesAsync();
-
         return Ok(new { message = "Order updated successfully" });
     }
 
-    // DELETE api/orders/{id}  — Admin: ลบออเดอร์
+    // Admin เท่านั้น — ลบออเดอร์
+    [Authorize(Roles = "Admin")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteOrder(int id)
     {
-        var order = await _context.Orders.Include(o => o.OrderItems).FirstOrDefaultAsync(o => o.OrderId == id);
+        var order = await _context.Orders
+            .Include(o => o.OrderItems)
+            .FirstOrDefaultAsync(o => o.OrderId == id);
+
         if (order == null)
             return NotFound(new { message = "Order not found" });
 
@@ -219,7 +247,6 @@ public class OrdersController : ControllerBase
         return Ok(new { message = "Order deleted successfully" });
     }
 
-    // Helper: map Order -> OrderResponseDto
     private static OrderResponseDto MapToDto(Order o) => new()
     {
         OrderId = o.OrderId,

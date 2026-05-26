@@ -1,5 +1,6 @@
 using Food_order_Backend.Data;
 using Food_order_Backend.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,67 +17,49 @@ public class CategoriesController : ControllerBase
         _context = context;
     }
 
-    // GET all categories: api/categories
+    // ทุกคนดูได้ — Public
+    [AllowAnonymous]
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Category>>> GetCategories()
     {
         return await _context.Categories.ToListAsync();
     }
 
-    // GET 1 category: api/categories/{id}
-    [HttpGet("{id}")]
-    public async Task<ActionResult<Category>> GetCategory(int id)
-    {
-        var category = await _context.Categories.FindAsync(id);
-
-        if (category == null)
-        {
-            return NotFound(new
-            {
-                message = "Category not found"
-            });
-        }
-
-        return Ok(category);
-    }
-
-    // CREATE category: api/categories
+    // Admin เท่านั้น
+    [Authorize(Roles = "Admin")]
     [HttpPost]
-    public async Task<ActionResult<Category>> CreateCategory(Category category)
+    public async Task<IActionResult> CreateCategory(Category category)
     {
         _context.Categories.Add(category);
-
         await _context.SaveChangesAsync();
-
-        return Ok(new
-        {
-            message = "Category added successfully",
-            data = category
-        });
+        return Ok(new { message = "Category created", data = category });
     }
 
-    // DELETE category: api/categories/{id}
+    // Admin เท่านั้น
+    [Authorize(Roles = "Admin")]
+    [HttpPut("{id}")]
+    public async Task<IActionResult> UpdateCategory(int id, Category category)
+    {
+        var existing = await _context.Categories.FindAsync(id);
+        if (existing == null)
+            return NotFound(new { message = "Category not found" });
+
+        existing.CategoryName = category.CategoryName;
+        await _context.SaveChangesAsync();
+        return Ok(new { message = "Category updated", data = existing });
+    }
+
+    // Admin เท่านั้น
+    [Authorize(Roles = "Admin")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteCategory(int id)
     {
-        var category = await _context.Categories.FindAsync(id);
+        var existing = await _context.Categories.FindAsync(id);
+        if (existing == null)
+            return NotFound(new { message = "Category not found" });
 
-        if(category == null)
-        {
-            return NotFound(new
-            {
-                message = "Category not found"
-            });
-        }
-
-        _context.Categories.Remove(category);
-
+        _context.Categories.Remove(existing);
         await _context.SaveChangesAsync();
-
-        return Ok(new
-        {
-            message = "Category deleted successfully"
-        });
+        return Ok(new { message = "Category deleted" });
     }
-
 }
