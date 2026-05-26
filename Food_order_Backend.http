@@ -1,0 +1,6 @@
+@Food_order_Backend_HostAddress = http://localhost:5124
+
+GET {{Food_order_Backend_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
