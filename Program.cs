@@ -1,5 +1,6 @@
 using System.Text;
 using Food_order_Backend.Data;
+using Food_order_Backend.Models;
 using Food_order_Backend.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -44,7 +45,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAngular", policy =>
     {
-        policy.WithOrigins("http://localhost:4200")
+        policy.WithOrigins("http://localhost:4200", "http://127.0.0.1:4200")
               .AllowAnyHeader()
               .AllowAnyMethod();
     });
@@ -77,6 +78,41 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDBContext>();
+    db.Database.Migrate();
+
+    if (!db.Users.Any(u => u.Role == "Admin"))
+    {
+        db.Users.Add(new User
+        {
+            FullName = "Admin",
+            Email = "admin@example.com",
+            Password = "admin123",
+            Role = "Admin"
+        });
+    }
+
+    if (!db.Categories.Any())
+    {
+        db.Categories.Add(new Category { CategoryName = "Food" });
+        db.SaveChanges();
+    }
+
+    if (!db.Products.Any())
+    {
+        var categoryId = db.Categories.Select(c => c.CategoryId).First();
+        db.Products.AddRange(
+            new Product { ProductName = "Fried Rice", Price = 50, CategoryId = categoryId, IsAvailable = true },
+            new Product { ProductName = "Noodle Soup", Price = 45, CategoryId = categoryId, IsAvailable = true },
+            new Product { ProductName = "Iced Tea", Price = 25, CategoryId = categoryId, IsAvailable = true }
+        );
+    }
+
+    db.SaveChanges();
+}
 
 if (app.Environment.IsDevelopment())
 {

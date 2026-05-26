@@ -1,3 +1,5 @@
+using Food_order_Backend.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -5,6 +7,8 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Food_order_Backend.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(AppDBContext))]
+    [Migration("20260526120000_AddUserRoleAndProductFields")]
     public partial class AddUserRoleAndProductFields : Migration
     {
         /// <inheritdoc />

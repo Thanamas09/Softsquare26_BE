@@ -25,9 +25,11 @@ public class DashboardController : ControllerBase
         var pendingOrders = await _context.Orders.CountAsync(o => o.Status == "Pending");
         var completedOrders = await _context.Orders.CountAsync(o => o.Status == "Completed");
         var cancelledOrders = await _context.Orders.CountAsync(o => o.Status == "Cancelled");
-        var totalSales = await _context.Orders
+        var completedOrderPrices = await _context.Orders
             .Where(o => o.Status == "Completed")
-            .SumAsync(o => (decimal?)o.TotalPrice) ?? 0;
+            .Select(o => o.TotalPrice)
+            .ToListAsync();
+        var totalSales = completedOrderPrices.Sum();
 
         var recentOrders = await _context.Orders
             .Include(o => o.Customer)
@@ -46,8 +48,11 @@ public class DashboardController : ControllerBase
             })
             .ToListAsync();
 
-        var topProducts = await _context.OrderItems
+        var orderItems = await _context.OrderItems
             .Include(oi => oi.Product)
+            .ToListAsync();
+
+        var topProducts = orderItems
             .GroupBy(oi => new { oi.ProductId, oi.Product!.ProductName })
             .Select(g => new
             {
@@ -58,7 +63,7 @@ public class DashboardController : ControllerBase
             })
             .OrderByDescending(x => x.TotalQuantity)
             .Take(5)
-            .ToListAsync();
+            .ToList();
 
         return Ok(new
         {
