@@ -1,5 +1,6 @@
 using Food_order_Backend.Data;
 using Food_order_Backend.Models;
+using Food_order_Backend.DTOs;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,103 +17,105 @@ public class ProductsController : ControllerBase
         _context = context;
     }
 
-    // GET all products: api/products
+    // GET api/products  — ดูเมนูทั้งหมด (พร้อมชื่อ Category)
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Product>>> GetProducts()
+    public async Task<ActionResult<IEnumerable<ProductResponseDto>>> GetProducts()
     {
-        return await _context.Products.ToListAsync();
+        var products = await _context.Products
+            .Include(p => p.Category)
+            .Select(p => new ProductResponseDto
+            {
+                ProductId = p.ProductId,
+                ProductName = p.ProductName,
+                Price = p.Price,
+                CategoryId = p.CategoryId,
+                CategoryName = p.Category != null ? p.Category.CategoryName : "",
+                ImageUrl = p.ImageUrl,
+                IsAvailable = p.IsAvailable
+            })
+            .ToListAsync();
+
+        return Ok(products);
     }
 
-    // GET 1 product: api/products/{id}
+    // GET api/products/{id}
     [HttpGet("{id}")]
-    public async Task<ActionResult<Product>> GetProduct(int id)
+    public async Task<ActionResult<ProductResponseDto>> GetProduct(int id)
     {
-        var product = await _context.Products.FindAsync(id);
+        var p = await _context.Products.Include(p => p.Category).FirstOrDefaultAsync(p => p.ProductId == id);
 
-        if(product == null)
+        if (p == null)
+            return NotFound(new { message = "Product not found" });
+
+        return Ok(new ProductResponseDto
         {
-            return NotFound(new
-            {
-                message = "Product not found"
-            });
-        }
-
-        return Ok(product);
+            ProductId = p.ProductId,
+            ProductName = p.ProductName,
+            Price = p.Price,
+            CategoryId = p.CategoryId,
+            CategoryName = p.Category != null ? p.Category.CategoryName : "",
+            ImageUrl = p.ImageUrl,
+            IsAvailable = p.IsAvailable
+        });
     }
 
-    // CREATE product: api/products
+    // POST api/products  — Admin: เพิ่มเมนู
     [HttpPost]
-    public async Task<ActionResult<Product>> CreateProduct(Product product)
+    public async Task<ActionResult<Product>> CreateProduct(ProductCreateDto dto)
     {
+        var categoryExists = await _context.Categories.AnyAsync(c => c.CategoryId == dto.CategoryId);
+        if (!categoryExists)
+            return BadRequest(new { message = "Category not found" });
+
+        var product = new Product
+        {
+            ProductName = dto.ProductName,
+            Price = dto.Price,
+            CategoryId = dto.CategoryId,
+            ImageUrl = dto.ImageUrl,
+            IsAvailable = dto.IsAvailable
+        };
+
         _context.Products.Add(product);
-
         await _context.SaveChangesAsync();
 
-        // return Ok(product);
-        return Ok(new
-        {
-            message = "Product added successfully",
-            data = product
-        });
+        return Ok(new { message = "Product added successfully", data = product });
     }
 
-    // UPDATE product: api/products/{id}
+    // PUT api/products/{id}  — Admin: แก้ไขเมนู
     [HttpPut("{id}")]
-    public async Task<IActionResult> UpdateProduct(int id, Product product)
+    public async Task<IActionResult> UpdateProduct(int id, ProductCreateDto dto)
     {
-        if (id != product.ProductId)
-        {
-            return BadRequest(new
-            {
-                message = "Product ID does not match"
-            });
-        }
-
         var existingProduct = await _context.Products.FindAsync(id);
-
         if (existingProduct == null)
-        {
-            return NotFound(new
-            {
-                message = "Product not found"
-            });
-        }
+            return NotFound(new { message = "Product not found" });
 
-        existingProduct.ProductName = product.ProductName;
-        existingProduct.Price = product.Price;
-        existingProduct.CategoryId = product.CategoryId;
+        var categoryExists = await _context.Categories.AnyAsync(c => c.CategoryId == dto.CategoryId);
+        if (!categoryExists)
+            return BadRequest(new { message = "Category not found" });
+
+        existingProduct.ProductName = dto.ProductName;
+        existingProduct.Price = dto.Price;
+        existingProduct.CategoryId = dto.CategoryId;
+        existingProduct.ImageUrl = dto.ImageUrl;
+        existingProduct.IsAvailable = dto.IsAvailable;
 
         await _context.SaveChangesAsync();
 
-        return Ok(new
-        {
-            message = "Product updated successfully",
-            data = existingProduct
-        });
+        return Ok(new { message = "Product updated successfully", data = existingProduct });
     }
 
-    // DELETE product: api/products/{id}
+    // DELETE api/products/{id}  — Admin: ลบเมนู
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteProduct(int id)
     {
         var product = await _context.Products.FindAsync(id);
-
         if (product == null)
-        {
-            return NotFound(new
-            {
-                message = "Product not found"
-            });
-        }
+            return NotFound(new { message = "Product not found" });
 
         _context.Products.Remove(product);
-
         await _context.SaveChangesAsync();
 
-        // return NoContent();
-        return Ok(new
-        {
-            message = "Product deleted successfully",
-        });
+        return Ok(new { message = "Product deleted successfully" });
     }
 }

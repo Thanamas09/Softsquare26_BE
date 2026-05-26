@@ -1,11 +1,9 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace Food_order_Backend.Models;
+namespace Food_order_Backend.DTOs;
 
-public class Product
+public class ProductCreateDto
 {
-    public int ProductId { get; set; }
-
     [Required(ErrorMessage = "ProductName is required")]
     [StringLength(200, ErrorMessage = "ProductName cannot exceed 200 characters")]
     public required string ProductName { get; set; }
@@ -19,7 +17,4 @@ public class Product
     public string ImageUrl { get; set; } = string.Empty;
 
     public bool IsAvailable { get; set; } = true;
-
-    // Navigation
-    public Category? Category { get; set; }
 }

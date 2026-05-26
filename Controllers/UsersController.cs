@@ -1,5 +1,6 @@
 using Food_order_Backend.Data;
 using Food_order_Backend.Models;
+using Food_order_Backend.DTOs;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,79 +17,109 @@ public class UsersController : ControllerBase
         _context = context;
     }
 
-    // 1. GET all users: api/users
-    [HttpGet]
-    public async Task<ActionResult<IEnumerable<User>>> GetUsers()
+    // POST api/users/login
+    [HttpPost("login")]
+    public async Task<IActionResult> Login(UserLoginDto dto)
     {
-        return await _context.Users.ToListAsync();
-    }
-
-    // 2. GET 1 user by id: api/users/{id}
-    [HttpGet("{id}")]
-    public async Task<ActionResult<User>> GetUser(int id)
-    {
-        var user = await _context.Users.FindAsync(id);
+        var user = await _context.Users
+            .FirstOrDefaultAsync(u => u.Email == dto.Email && u.Password == dto.Password);
 
         if (user == null)
-        {
-            return NotFound(new { message = "User not found" });
-        }
+            return Unauthorized(new { message = "Invalid email or password" });
 
-        return Ok(user);
+        return Ok(new
+        {
+            message = "Login successful",
+            data = new
+            {
+                user.UserId,
+                user.FullName,
+                user.Email,
+                user.Role
+            }
+        });
     }
 
-    // 3. CREATE user: api/users
-    [HttpPost]
-    public async Task<ActionResult<User>> CreateUser(User user)
+    // POST api/users/register
+    [HttpPost("register")]
+    public async Task<IActionResult> Register(UserRegisterDto dto)
     {
+        var emailExists = await _context.Users.AnyAsync(u => u.Email == dto.Email);
+        if (emailExists)
+            return Conflict(new { message = "Email already in use" });
+
+        var user = new User
+        {
+            FullName = dto.FullName,
+            Email = dto.Email,
+            Password = dto.Password, // NOTE: hash ใน production จริง
+            Role = "Customer"
+        };
+
         _context.Users.Add(user);
         await _context.SaveChangesAsync();
 
         return Ok(new
         {
-            message = "User created successfully",
-            data = user
+            message = "Registered successfully",
+            data = new { user.UserId, user.FullName, user.Email, user.Role }
         });
     }
 
-    // 4. UPDATE user: api/users/{id}
-    [HttpPut("{id}")]
-    public async Task<IActionResult> UpdateUser(int id, User user)
+    // GET api/users
+    [HttpGet]
+    public async Task<ActionResult<IEnumerable<object>>> GetUsers()
     {
-        if (id != user.UserId)
-        {
-            return BadRequest(new { message = "User ID does not match" });
-        }
+        var users = await _context.Users
+            .Select(u => new { u.UserId, u.FullName, u.Email, u.Role })
+            .ToListAsync();
+        return Ok(users);
+    }
 
-        var existingUser = await _context.Users.FindAsync(id);
-
-        if (existingUser == null)
-        {
+    // GET api/users/{id}
+    [HttpGet("{id}")]
+    public async Task<IActionResult> GetUser(int id)
+    {
+        var user = await _context.Users.FindAsync(id);
+        if (user == null)
             return NotFound(new { message = "User not found" });
-        }
 
-        existingUser.FullName = user.FullName;
-        existingUser.Email = user.Email;
+        return Ok(new { user.UserId, user.FullName, user.Email, user.Role });
+    }
+
+    // PUT api/users/{id}
+    [HttpPut("{id}")]
+    public async Task<IActionResult> UpdateUser(int id, UserRegisterDto dto)
+    {
+        var existingUser = await _context.Users.FindAsync(id);
+        if (existingUser == null)
+            return NotFound(new { message = "User not found" });
+
+        var emailExists = await _context.Users
+            .AnyAsync(u => u.Email == dto.Email && u.UserId != id);
+        if (emailExists)
+            return Conflict(new { message = "Email already in use" });
+
+        existingUser.FullName = dto.FullName;
+        existingUser.Email = dto.Email;
+        existingUser.Password = dto.Password;
 
         await _context.SaveChangesAsync();
 
         return Ok(new
         {
             message = "User updated successfully",
-            data = existingUser
+            data = new { existingUser.UserId, existingUser.FullName, existingUser.Email, existingUser.Role }
         });
     }
 
-    // 5. DELETE user: api/users/{id}
+    // DELETE api/users/{id}
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteUser(int id)
     {
         var user = await _context.Users.FindAsync(id);
-
         if (user == null)
-        {
             return NotFound(new { message = "User not found" });
-        }
 
         _context.Users.Remove(user);
         await _context.SaveChangesAsync();
